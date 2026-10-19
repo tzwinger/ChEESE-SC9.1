@@ -1,2 +1,0 @@
-bedrock: BEDROCK_WVJ2.nc (limit range to max ~2000)
-surface: wvatnajokull-SPOT-Pleiades-2021.isn50.zmasl.nc
