@@ -1,0 +1,356 @@
+!-----------------------------------------------------
+! Cheese project case as defined by Tomas Johannesson.
+! We couple 3D elasticity equation with 2D thin film
+! flow. The convergence of the FSI system is enhaned with
+! method of artificial compressibility. Soft limiters
+! are used to ensure that ice never goes below bedrock.
+!
+! P.R. 11.9.2024
+!-----------------------------------------------------
+
+! Physical parameters of the case
+#rhoi=900.0
+#rhow=1000.0
+#h0 = 0.001  ! 0.005
+#MinH = 10.0
+#gravity=9.82
+#E=9.0e9
+#Arrh=3.0E-24
+#constvisc=1.0E13
+#Lheat=3.34e05
+#nu=1.0/2.0
+#etaw=1.7e-3 ! dynamic viscosity at 0°C
+#H=400.0 
+#L=1000.0    ! 1000 or 10000
+#Ly=500.0    ! or 1000
+#D=E*H^3/(12*(1-nu^2))
+#K=D*24*(16/5)/Ly^4
+#bslp=0.0
+#Pext=2.0e5
+#P0=gravity*H*rhoi
+
+! This is the displacement of the plate top prestressed by gravity
+#dz=-rhoi*gravity*H^2*(1-nu)/(2*E)
+
+! channel config
+#channelampl=0.5
+#channelwidth=500.0
+#channellength= 2000.0
+ 
+! Numerical parameters of the coupling
+! Additionally relaxation paramters may be used to increase radius of convergence. 
+#frelax=3.0/4.0
+#erelax=2.0/3.0
+! tolerance to reach convergence
+#ftol=1.0e-2
+#etol=1.0e-3
+
+! #AC=1.5/K
+#AC=1.3/K
+
+#coeff=1.0
+
+#Arrh = 3.0E-24
+#constvisc = 1.0E13
+
+#dt=10.0
+#nsteps=6*60
+#noutput=6
+
+$tag="geometry_inlet"
+
+!#nsteps=1
+!#coeff=0.0
+
+!---LUA BEGIN
+! assert(loadfile('./skafta.lua'))()
+!---LUA END
+
+echo on master
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! HEADER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "outline_skafta"
+  Include Path ""
+  Results Directory "results"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SIMULATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 3D"
+
+  Simulation Type = "Steady State"
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  
+  Output File = $tag$.result
+
+  Extruded Mesh Levels = 9
+  Preserve baseline = Logical True
+
+  Post File = $tag$.vtu  
+  vtu: ascii output = logical true
+
+  Max Output Level = 5
+End
+
+Constants
+  Gravity (4) = 0 0 -1 #gravity
+End
+
+Body 1
+  Name = "Ice"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+!===============================================================================
+! Begin NETCDF solvers
+!===============================================================================
+Solver 1 ! Bedrock
+  Exec Solver = "Before Simulation"
+  Equation = String "NETCDFDataReader1"
+  Procedure = "GridDataReader" "GridDataReader"
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "wvatnajokull-netCDFs-v2/BEDROCK_WVJ3.nc"
+  X Name = String "X"
+  Y Name = String "Y"
+
+  !--- Interpolation variables
+  X Epsilon = Real 1.0e-2
+  Y Epsilon = Real 1.0e-2
+
+  Interpolation Bias = Real 0.0
+  Interpolation Multiplier = Real 1.0
+
+  Is Time Counter = Logical True
+
+  Variable 1 = File "Band1"
+  Target Variable 1 = String "bedrock"
+
+  Enable Scaling = Logical False ! Scales the Elmer grid to match the NetCDF grid 
+
+  Bubbles in Global System = Logical False
+End
+
+Solver 2 ! surface
+  Equation = String "NETCDFDataReader2"
+  Procedure = "GridDataReader" "GridDataReader"
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "wvatnajokull-netCDFs-v2/wvatnajokull-2010-2012-cmb.isn50.zmasl.nc"
+  X Name = String "X"
+  Y Name = String "Y"
+
+  !--- Interpolation variables
+  X Epsilon = Real 1.0e-2
+  Y Epsilon = Real 1.0e-2
+
+  Interpolation Bias = Real 0.0
+  Interpolation Multiplier = Real 1.0
+
+  Is Time Counter = Logical True
+
+  Variable 1 = File "Band1"
+  Target Variable 1 = String "surfaceDEM"
+
+  Enable Scaling = Logical False ! Scales the Elmer grid to match the NetCDF grid 
+
+  Bubbles in Global System = Logical False
+End
+
+Solver 3
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+
+  Displacement Mode = Logical False
+  Correct Surface = Logical True
+  Minimum Height = Real #MinH
+
+  Correct Surface Mask = String "Glaciated"
+  Dot Product Tolerance = 1.0e-3
+
+  ! These are needed to host the variables that are read in
+  Variable = -nooutput "DummyMesh"
+End
+
+Solver 4
+  Equation = "Flowdepth"
+
+  Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+  Variable = String "Depth"
+  Variable DOFs = 1
+
+  Gradient = Real -1.0E00
+
+  Calc Free Surface = Logical FALSE
+  Linear System Solver = "Iterative"
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-7
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Exported Variable 1 = "Initial Cavity"
+  Update Exported Variables = True
+End
+
+Solver 5
+  Equation = "Flowheight"
+
+  Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+  Variable = String "Height"
+  Variable DOFs = 1
+
+  Gradient = Real 1.0E00
+
+  Calc Free Surface = Logical FALSE
+  Linear System Solver = "Iterative"
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-7
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+End
+
+Solver 6
+  Equation = "Distance"
+  Variable =  "distance"
+    Procedure = "DistanceSolve" "DistanceSolver1"
+    Optimize Bandwidth = logical false
+End
+
+Equation 1
+  Name = "ElastEq"
+  Active Solvers(6) = 1 2 3 4 5 6
+End
+
+Initial Condition 1
+   Initial Cavity = Variable  Coordinate 1, Coordinate 2
+     Real LUA "initialcavity(tx[0],tx[1])"
+End
+
+Material 1
+  Name = "Ice"
+  Youngs modulus = #E
+  Density = #rhoi
+  Poisson ratio = #nu
+  Viscosity = #constvisc
+  
+  ! Nonnewtonian viscosity
+  Viscosity Model = String "Glen"
+  Glen Exponent = Real 3.0
+  Critical Shear Rate =  Real 1.0E-12
+  ! use that instead to set constant ratefactor
+  Arrhenius Factor = Real #Arrh
+  Set Arrhenius Factor = Logical True
+End
+
+Boundary Condition 1  
+  Name = "North"
+  Target Boundaries(1) = 1
+   FilmPressure 1 = Variable Depth
+     Real LUA "tx[0]*rhoi*gravity"
+End
+
+Boundary Condition 2  
+  Name = "East"
+
+ Target Boundaries(1) = 2
+! Because how the normal points this results to negative pressure at the end. 
+  FilmPressure 1 = Real 0.0
+End
+
+Boundary Condition 3 
+  Name = "South"
+
+ Target Boundaries(1) = 3
+ Disp 3 = Real 0.0
+End
+
+Boundary Condition 4
+  Name = "West"
+
+ Target Boundaries(1) = 4
+ Disp 3 = Real 0.0
+End
+
+Boundary Condition 5
+  Name = "floodpath"
+
+ Target Boundaries(1) = 5
+ Distance = Real 0.0
+End
+
+Boundary Condition 6
+  Name = "North extruded"
+  Target Boundaries(1) = 6
+  Disp 1 = Real 0.0
+  Disp 3 = Real 0.0
+End
+
+Boundary Condition 7
+  Name = "East extruded"
+  Target Boundaries(1) = 7
+  Disp 1 = Real 0.0
+  Disp 3 = Real 0.0
+End
+
+Boundary Condition 8
+  Name = "South extruded"
+  Target Boundaries(1) = 8
+  Disp 2 = Real 0.0
+  ! keep at initially deformed state
+  Disp 3 = Real 0.0
+  !Equals "Disp 3"
+  Distance = Real 2000.0
+End
+
+Boundary Condition 9
+  Name = "West extruded"
+  Target Boundaries(1) = 9
+  Disp 2 = Real 0.0
+  ! keep at initially deformed state
+  Disp 3 = Real 0.0
+  !Equals "Disp 3"
+  Distance = Real 2000.0
+End
+
+Boundary Condition 10
+  Name = "floodpath extruded"
+
+ Target Boundaries(1) = 10
+End
+
+Boundary Condition 11
+  Name = Contact
+  Disp 1 = Real 0.0
+  Disp 2 = Real 0.0
+  Disp 3 = Real 0.0
+
+  Save Scalars = True
+  Height = Real 0.0
+  Bottom Surface = Variable "bedrock", "Coordinate 1", "Coordinate 2"
+     Real LUA "tx[0] + initialcavity(tx[1],tx[2])"
+! + initialcavity(tx[0],tx[1]) + undulations(tx[0],tx[1])"
+!     Real LUA "tx[0]*500/40000 + 0.01*tx[1]"
+    
+End
+
+Boundary Condition 12  
+  Name = Top
+  Depth = Real 0.0
+  Top Surface = Equals "SurfaceDEM"
+End

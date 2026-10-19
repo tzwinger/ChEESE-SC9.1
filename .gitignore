@@ -1,0 +1,8 @@
+*.dat
+*.log
+*.out
+*.err
+*.so
+*~
+*.vtu
+*.pvtu

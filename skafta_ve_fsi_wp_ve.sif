@@ -1,0 +1,552 @@
+!-----------------------------------------------------
+! Cheese project case as defined by Tomas Johannesson.
+! We couple 3D elasticity equation with 2D thin film
+! flow. The convergence of the FSI system is enhaned with
+! method of artificial compressibility. Soft limiters
+! are used to ensure that ice never goes below bedrock.
+!
+! P.R. 11.9.2024
+!-----------------------------------------------------
+
+! Physical parameters of the case
+#rhoi=900.0
+#rhow=1000.0
+#h0 = 0.05  ! 0.005
+#MinH = 10.0
+#gravity=9.82
+#E=9.0e9
+#Arrh=3.0E-24
+#constvisc=1.0E13
+#Lheat=3.34e05
+#nu=1.0/3.0
+#etaw=1.7e-3 ! dynamic viscosity at 0°C
+#H=400.0 
+#L=1000.0    ! 1000 or 10000
+#Ly=1000.0    ! or 1000
+#actdist=3000.0
+#D=E*H^3/(12*(1-nu^2))
+#K=D*24*(16/5)/Ly^4
+#bslp=0.0
+#Pext=1.0E05
+#P0=gravity*H*rhoi
+#waterlevel=1580.0
+
+! This is the displacement of the plate top prestressed by gravity
+#dz=-rhoi*gravity*H^2*(1-nu)/(2*E)
+
+! Numerical parameters of the coupling
+! Additionally relaxation paramters may be used to increase radius of convergence. 
+#frelax=1.0/3.0
+#erelax=2.0/3.0
+! tolerance to reach convergence
+#ftol=1.0e-2
+#etol=1.0e-2
+
+! #AC=1.5/K
+#AC=1.0/K
+#pcs=0.5
+#acm=1.0/500.0
+
+#Arrh=3.0E-24
+#constvisc=1.0E13
+
+! channel config
+#channelampl=0.5
+#channelwidth=500.0
+#channellength= 2000.0
+
+#dt=20.0
+#nsteps=45*60/dt
+#noutput=60/dt
+
+$tag="skafta_fsi_ve_wp_np_pcs#pcs#_acm#acm#"
+!$restartfile="geometry_inlet_upf.result"
+$restartfile="skafta_ve_init.result"
+
+!---LUA BEGIN
+! assert(loadfile('./skafta.lua'))()
+!---LUA END
+
+echo on master
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! HEADER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "outline_skafta"
+  Include Path ""
+  Results Directory "results"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SIMULATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 3D"
+
+  Simulation Type = "Transient"
+  
+  Output File = $tag$.result
+
+  Extruded Mesh Levels = 9  
+  Preserve baseline = Logical True
+
+  Post File = $tag$.vtu  
+  vtu: ascii output = logical true
+  
+  ! how verbose the solver should be
+  !  3 = Only warnings
+  ! 32 = Maximum verbosity
+  !-------------------------------------------------------
+  Max Output Level = 5
+
+  ! Coupled iterations between different solvers
+  !---------------------------------------------
+  Steady State Max Iterations = 20
+  Steady State Min Iterations = 1
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Timestep Intervals(1) =  #nsteps
+  Timestep Sizes(1) = #dt
+  Output Intervals(1) = #noutput
+
+  ! usually, Dirichlet BC's are initialized before everything else. Sometimes those 
+  ! conditions are dependent on solutions of earlier solvers; next line ensures that
+  ! this is not an issue.
+  !-----------------------------------------
+  Initialize Dirichlet Conditions = Logical False
+  
+  ! Restart happens in Solver 1
+  Restart File = $restartfile
+  Restart Position = 10
+  Restart Before Initial Conditions = Logical True
+  Transient Restart = Logical True
+  
+End
+
+Constants
+  Gravity (4) = 0 0 -1 #gravity
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BODIES (i.e., domains to compute on)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Name = "Ice"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "waterfilm"
+  Equation = 2
+  Material = 2
+  Body Force = 2
+  Initial Condition = 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! INITIAL CONDITIONS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+   Initial Cavity = Variable  Coordinate 1, Coordinate 2
+     Real LUA "initialcavity(tx[0],tx[1])"
+End
+
+Initial Condition 2
+  ! Initial velocity is not really needed when using newtonian start
+ FilmVelocity 1 = Real 0.0
+ FilmVelocity 2 = Real 0.0
+ !   Real LUA "math.max(0.5*(tx[1] - tx[0])*rhoi*gravity,1000.0)"
+ Melt Gap = Real 0.0
+ Gap Disp = Variable Coordinate 1, Coordinate 2
+    Real LUA "h0 + initialcavity(tx[0],tx[1])"
+ Initial Cavity = Variable  Coordinate 1, Coordinate 2
+     Real LUA "initialcavity(tx[0],tx[1])"   
+ AC = Real #AC
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! MATERIAL
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Name = "Ice"
+  Youngs modulus = #E
+  Density = #rhoi
+  Poisson ratio = #nu
+  Viscosity = #constvisc
+  
+  ! Nonnewtonian viscosity
+  Viscosity Model = String "Glen"
+  Glen Exponent = Real 3.0
+  Critical Shear Rate =  Real 1.0E-12
+  ! use that instead to set constant ratefactor
+  Arrhenius Factor = Real #Arrh
+  Set Arrhenius Factor = Logical True
+
+End
+
+Material 2
+  Name = "MeltWater"
+  Density = #rhow
+  Viscosity = #etaw
+
+   Artificial Compressibility = Equals "AC"
+
+  Gap Height = Equals "Gap Disp"
+  Manning coefficient = Real 0.05
+  Darcy Roughness = Real #h0
+  Latent Heat = Real #Lheat
+  Pressure Melting Coefficient = Real 7.42e-08
+  Water Heat Capacity = Real 4.218E03
+  Bedrock Height = Equals "bedrock"
+  Thickness = Equals "Depth"
+  Ice density = Real #rhoi
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BODY FORCE
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Stress BodyForce 1 = 0.0
+  Stress BodyForce 2 = 0.0 
+  Stress BodyForce 3 = #-rhoi*gravity
+End
+
+Body Force 2
+  Fsi Velocity = Equals "Disp Velocity 3"
+  Gap Disp = Variable  "Disp 3", "Coordinate 1", "Coordinate 2"
+     Real LUA "tx[0] + h0 + initialcavity(tx[1],tx[2])"
+  FilmFlow Bodyforce 1 = Variable Normal Vector 1
+     Real LUA "-tx[0] * gravity"     
+  FilmFlow Bodyforce 2 = Variable Normal Vector 2
+    Real LUA "-tx[0] * gravity"
+  dForce 3 = Real 1.0  
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SOLVER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 1
+  Exec Solver = "before simulation"
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+
+  Displacement Mode = Logical False
+  Correct Surface = Logical True
+  Minimum Height = Real #MinH
+
+  Correct Surface Mask = String "Glaciated"
+  Dot Product Tolerance = 1.0e-3
+
+  ! These are needed to host the variables that are read in
+  Variable = -nooutput "DummyMesh"
+End
+
+Solver 2
+  Equation = "Flowdepth"
+  Exec Solver = "Before simulation"
+
+  Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+  Variable = String "Depth"
+  Variable DOFs = 1
+
+  Gradient = Real -1.0E00
+
+  Calc Free Surface = Logical FALSE
+  Linear System Solver = "Iterative"
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-7
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Update Exported Variables = True
+End
+
+Solver 3
+  Equation = "Flowheight"
+  Exec Solver = "Before simulation"
+
+  Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+  Variable = String "Height"
+  Variable DOFs = 1
+
+  Gradient = Real 1.0E00
+
+  Calc Free Surface = Logical FALSE
+  Linear System Solver = "Iterative"
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-7
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+End
+
+Solver 4
+   Exec Solver = "Before Simulation"
+   Equation = "Normal vector"
+   Variable = "Normal Vector"   
+   ! in 3dimensional simulations we have 3 entries
+   Variable DOFs = 3 
+   !NB: does not need to actually solve a matrix
+   !    hence no BW optimization needed
+   Optimize Bandwidth = Logical False 
+   Procedure = "ElmerIceSolvers" "ComputeNormalSolver"
+   ! if set to True, all boundary normals would be computed by default
+   ComputeAll = Logical False
+End
+Solver 5
+  Equation = "Distance"
+  Exec Solver = "before Simulation"
+  Variable =  "distance"
+    Procedure = "DistanceSolve" "DistanceSolver1"
+    Optimize Bandwidth = logical false
+End
+Solver 6
+ Equation = "FilmFlow"
+  Model Dimension = Integer 2
+  Procedure = "FilmFlowSolver" "FilmFlowSolver"
+  Optimize Bandwidth = False
+
+  Steady State Convergence Tolerance = #ftol
+  Steady State Relaxation Factor = #frelax
+
+  Nonlinear System Max Iterations = 100
+  
+  Nonlinear System Convergence Tolerance = #ftol/10.0
+  Nonlinear System Relaxation Factor = #frelax
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "MUMPS"
+
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-8
+  
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 100
+
+  Number of Integration Points = 16
+
+  Min Gap Height = Real #h0
+  Lateral Strain = Logical True
+
+  Convect = Logical True
+
+! When setting Dirichlet conditions for pressure set this True.
+! When for velocity set to False.
+  GradP Discretization = True
+
+  Update Exported Variables = True
+  Exported Variable 1 = "Gap Disp"
+  Exported Variable 2 = "Melt Gap"
+  Exported Variable 3 = "Cryostatic Pressure"
+  Exported Variable 4 = "Initial Cavity"
+
+  Friction Model = String "Darcy"
+  
+  !Do not compute the FilmPressure when visiting 1st time.
+  Skip First Solution = Logical True
+  
+End
+
+Solver 7
+  Equation = "Linear elasticity"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "Disp"
+  Variable DOFs = 4
+  Steady State Convergence Tolerance = #etol
+
+  !include "block4_idrs.sif"
+  include "idrs.sif"
+  !include "gcr.sif"
+
+  Nonlinear System Convergence Tolerance = #etol
+  Nonlinear System Max Iterations = 20
+
+  Element = "p:1 b:4"
+
+  Incompressible = Logical True
+  Time Derivative Order = 1
+  Maxwell material=Logical True
+  Apply Limiter = Logical True
+  Save Limiter = Logical True
+  Calculate Velocity = Logical True
+  Displace Mesh =  Logical False
+  Solve Adjoint Equation = Logical True  
+  Adjoint Source Name = String "dForce"
+
+End
+
+Solver 8
+  Equation = "FilmAC"
+  Procedure = "FilmCompressibility" "FilmCompressibility"
+
+  Linear System Solver = "direct"
+  Linear System Direct Method = "mumps"
+
+#dpres=1.0e-2
+#Ls=0.1
+
+  Pressure Variable Name = String "FilmPressure"
+  Height Variable Name = String "Gap Disp"
+  Sensitivity Variable Name = String "Disp Adjoint 3"
+  
+  AC Multiplier = Real #acm
+  
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 30
+
+ Sensitivity Mode = Logical True
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! EQUATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Name = "ElastEq"
+  Active Solvers(6) = 1 2 3 4 5 7
+End
+Equation 2
+  Name = "waterfilm equations"
+  Active Solvers(2) =  6 8
+  Convection = "Computed"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BC's
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1  
+  Name = "North"
+  Target Boundaries(1) = 1
+  Disp 3 = Real 0.0
+  ComputeNormal = Logical False
+  FilmPressure = Variable "Cryostatic Pressure"
+     Real LUA "pcs*tx[0]"
+  AC inst = Real 0.0
+End
+
+Boundary Condition 2  
+  Name = "East"
+  ComputeNormal = Logical False
+  Target Boundaries(1) = 2
+  Disp 3 = Real 0.0
+  FilmPressure = Variable "Cryostatic Pressure"
+     Real LUA "pcs*tx[0]"
+  AC inst = Real 0.0
+End
+
+Boundary Condition 3 
+  Name = "South"
+ ComputeNormal = Logical False
+ Target Boundaries(1) = 3
+ Disp 3 = Real 0.0
+ FilmPressure = Variable "Cryostatic Pressure"
+     Real LUA "pcs*tx[0]"
+ AC inst = Real 0.0 
+End
+
+Boundary Condition 4 
+  Name = "West"
+ ComputeNormal = Logical False
+ Target Boundaries(1) = 4
+ Disp 3 = Real 0.0
+ FilmPressure = Variable "Cryostatic Pressure"
+     Real LUA "pcs*tx[0]"
+ AC inst = Real 0.0 
+End
+
+Boundary Condition 5 
+  Name = "floodpath"
+ ComputeNormal = Logical False
+ Target Boundaries(1) = 5
+ Distance = Real 0.0
+End
+
+Boundary Condition 6
+  Name = "North extruded"
+  Target Boundaries(1) = 6
+  ComputeNormal = Logical False
+  Disp 3 = Real 0.0
+  Disp 2 = Real 0.0
+  Disp 1 = Real 0.0
+End
+
+Boundary Condition 7
+  Name = "East extruded"
+  Target Boundaries(1) = 7
+  ComputeNormal = Logical False
+  Disp 1 = Real 0.0
+  Disp 2 = Real 0.0
+ Disp 3 = Real 0.0
+End
+
+Boundary Condition 8
+  Name = "South extruded"
+  Target Boundaries(1) = 8
+  ComputeNormal = Logical False
+  Disp 2 = Real 0.0
+  Disp1 = Real 0.0
+  Disp 3 = Real 0.0
+End
+
+Boundary Condition 9
+  Name = "West extruded"
+  Target Boundaries(1) = 9
+  ComputeNormal = Logical False
+  Disp 1 = Real 0.0
+  Disp 2 = Real 0.0
+  Disp 3 = Real 0.0
+End
+
+Boundary Condition 10
+  Name = "floodpath extruded"
+  ComputeNormal = Logical False
+  Target Boundaries(1) = 10
+End
+
+Boundary Condition 11
+  Name = "Contact"
+  Body Id = 2
+  Disp 1 = Real 0.0
+  Disp 2 = Real 0.0
+  ! use that to enable lowering of the initial cavity  
+  Disp 3 Lower Limit = Variable "Melt Gap"
+      Real LUA "tx[0]"
+  Disp 3 = Real 0.0
+  Disp 3 Condition = Variable Distance
+    Real LUA "IfThenElse(tx[0] > actdist, 1.0, -1.0)"
+  ! use this to keep initial cavity
+
+  FilmPressure = Variable  "Coordinate 3"
+    Real LUA "math.max(rhow*gravity*(waterlevel - tx[0]), 0.0)"
+  FilmPressure Condition =  Variable "Coordinate 1", "Coordinate 2"
+     Real LUA "applypressure(tx[0],tx[1])"
+  Save Scalars = True
+  Height = Real 0.0
+  Bottom Surface = Variable "bedrock", "Coordinate 1", "Coordinate 2"
+     Real LUA "tx[0] + initialcavity(tx[1],tx[2])"
+
+  dForce 3 = Real 1.0  
+
+  Normal Force = Opposes "FilmPressure"
+  ComputeNormal= Logical True
+    
+End
+
+Boundary Condition 12 
+  Name = Top
+  Depth = Real 0.0
+  Top Surface = Equals "SurfaceDEM"
+  ComputeNormal = Logical False
+End
