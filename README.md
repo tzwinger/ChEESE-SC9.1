@@ -51,3 +51,6 @@ Einarsson, B., Magnússon, E., Roberts, M. J., Pálsson, F., Thorsteinsson, T., 
 Jóhannesson, T., Björnsson, H., Magnússon, E., Guðmundsson, S., Pálsson, F., Sigurðsson, O., Thorsteinsson, Th., Berthier, E. (2013). Ice-volume changes, bias estimation of mass-balance measurements and changes in subglacial lakes derived by lidar mapping of the surface of Icelandic glaciers. Annals of Glaciology. 54(63), 63–74. https://doi.org/10.3189/2013AoG63A422
 
 Millan, R., Mouginot, J., Rabatel, A., Morlighem, M. (2022). Ice velocity and thickness of the world’s glaciers. Nature Geoscience, 15, 124–128.  https://doi.org/10.1038/s41561-021-00885-z
+
+## Conditions for use
+The data in this repository are made available on the basis of a CC-BY license ( Creative Commons Attribution 4.0 International License / http://creativecommons.org/licenses/by/4.0/).
