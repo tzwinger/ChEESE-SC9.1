@@ -22,17 +22,21 @@ Mind, that the case does not converge properly and depending on the setup might 
 October 2026 / Tómas Jóhannesson, IMO; Thomas Zwinger, CSC
 
 ### Ice surface:
- `wvatnajokull-2010-2012-cmb.isn50.zmasl.nc` : 50x50m DEM of the ice surface geometry of Western Vatnajökull based on measurements by aerial lidar in 2010-2012 (Jóhannesson et al., 2013)
- `wvatnajokull-2010-2012-cmb.isn50.shade.nc` : --"--, shading
- `wvatnajokull-2010-2012-cmb.isn50.zmasl.contour20.shp` : --"--, 20m contours
+`wvatnajokull-2010-2012-cmb.isn50.zmasl.nc` : 50x50m DEM of the ice surface geometry of Western Vatnajökull based on measurements by aerial lidar in 2010-2012 (Jóhannesson et al., 2013)
 
-###(Modelled) subglacial medrock geometry:
- `BEDROCK_WVJ3.nc` : 50x50m modelled bedrock DEM based on `wvatnajokull-2010-2012-cmb.isn50.zmasl.nc` and the ice-thickness modelled by Millan et al. (2022)
- `BEDROCK_WVJ3_shade.nc` : --"--, shading
+`wvatnajokull-2010-2012-cmb.isn50.shade.nc` : --"--, shading
+
+`wvatnajokull-2010-2012-cmb.isn50.zmasl.contour20.shp` : --"--, 20m contours
+
+### (Modelled) subglacial medrock geometry:
+`BEDROCK_WVJ3.nc` : 50x50m modelled bedrock DEM based on `wvatnajokull-2010-2012-cmb.isn50.zmasl.nc` and the ice-thickness modelled by Millan et al. (2022)
+
+`BEDROCK_WVJ3_shade.nc` : --"--, shading
 
 ### Floodpaths:
- `eystri-hlaupleid.shp` : inferred jökulhlaup path from the Eastern Skaftá Cauldron (Einarsson et al., 2016)
- `vestari-hlaupleid.shp` : inferred jökulhlaup path from the Western Skaftá Cauldron (Einarsson et al., 2016)
+`eystri-hlaupleid.shp` : inferred jökulhlaup path from the Eastern Skaftá Cauldron (Einarsson et al., 2016)
+
+`vestari-hlaupleid.shp` : inferred jökulhlaup path from the Western Skaftá Cauldron (Einarsson et al., 2016)
 
 ### Note:
 The ice-surface and bedrock DEMs are provided in NetCDF format in the Icelandic national ISN93 Lambert projection (EPSG:3057).
