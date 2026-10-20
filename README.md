@@ -1,4 +1,4 @@
-# ChEESE-SC9.1
+# ChEESE-SC9.1: Eastern Skaftá cauldron GLOF simulation, Iceland
 
 ## Directories and files
 **geometry**: contains Gmsh files of different cutouts of the whole area. Convert msh-files using
